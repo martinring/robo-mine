@@ -96,7 +96,8 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
 		          listeners.foreach { listener => Future { listener("0.0") } }
 		          batteryLevel -= 0.00005f
 		        case Some((cost,sensor)) =>
-		          listeners.foreach { listener => Future { listener(sensor(body)) } }
+		          val output = sensor(body)
+		          listeners.foreach { listener => Future { listener(output) } }
 		          batteryLevel -= 0.00005f * cost
 		      }
 	      }
