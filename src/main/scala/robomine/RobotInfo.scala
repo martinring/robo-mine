@@ -33,18 +33,19 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
     
     val name = names.nextName()
     
-    private var sensors = Map[String, Body => String](
-      "gps" -> ( b =>  "%2.4fN %2.4fW".formatLocal(Locale.US, b.getPosition().y, -b.getPosition().x)),
-      "batteryLevel" -> ( _ => "%.1f%%".formatLocal(Locale.US, batteryLevel * 100) ),
-      "gyroscope" -> { b =>        
+    private var sensors = Map[String, (Double,Body => String)](
+      "gps" -> ( 6.0,  b =>  "%2.4fN %2.4fW".formatLocal(Locale.US, b.getPosition().y, -b.getPosition().x)),
+      "batteryLevel" -> ( 0.1, _ => "%.1f%%".formatLocal(Locale.US, batteryLevel * 100) ),
+      "compass" -> ( 2.0, b => "%.1f°".formatLocal(Locale.US, b.getAngle() * 57.295) ),
+      "gyroscope" -> ( 0.5, { b =>        
         "%.4f".formatLocal(Locale.US, b.getAngularVelocity())
-      },      
-      "accelerometer" -> ( b => {
+      }),      
+      "accelerometer" -> ( 0.5, b => {
         val acc = b.getLinearVelocity().sub(_prevAcc).rotate(-b.getAngle())
         "%.4f %.4f".formatLocal(Locale.US, acc.x, acc.y)           
       }),
-      "laser" -> ( b => "%.4f %.4f %.4f".formatLocal(Locale.US, _laserL, _laserC, _laserR) ),
-      "goldDetector" -> ( _ => "%.4f".formatLocal(Locale.US, _gold) )
+      "laser" -> ( 1.0, b => "%.4f %.4f %.4f".formatLocal(Locale.US, _laserL, _laserC, _laserR) ),
+      "goldDetector" -> ( 2.0, _ => "%.4f".formatLocal(Locale.US, _gold) )
     )
     
     def cut(f: Float, negative: Boolean = false) = 
@@ -56,7 +57,7 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
       "rightWheel" -> ( value => rightPower = cut(value, negative = true)),
       "laserL" -> (value => laserPowerL = cut(value)),
       "laserC" -> (value => laserPowerC = cut(value)),
-      "laserR" -> (value => laserPowerR = cut(value))) 
+      "laserR" -> (value => laserPowerR = cut(value)))
     
     private var listeners = Map.empty[String,Set[String => Unit]] 
     				  
@@ -89,13 +90,14 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
 	  
 	  def step(body: Body) = {
 	    listeners.foreach { case (name,listeners) =>
-	      if (batteryLevel > 0 && listeners.size > 0) {
-	        batteryLevel -= 0.00005f				         
+	      if (batteryLevel > 0 && listeners.size > 0) {	        
 		      sensors.get(name) match {
 		        case None =>
 		          listeners.foreach { listener => Future { listener("0.0") } }
-		        case Some(sensor) =>
+		          batteryLevel -= 0.00005f
+		        case Some((cost,sensor)) =>
 		          listeners.foreach { listener => Future { listener(sensor(body)) } }
+		          batteryLevel -= 0.00005f * cost
 		      }
 	      }
 	    }
