@@ -85,8 +85,8 @@ private [robomine] trait SimulationStep extends TestbedTest with SimulationInit 
         info.batteryLevel -= info.laserPowerL * 0.00005f
         info.batteryLevel -= info.laserPowerC * 0.00005f
         info.batteryLevel -= info.laserPowerR * 0.00005f		        
-        info.batteryLevel -= info.leftPower * 0.0001f
-        info.batteryLevel -= info.rightPower * 0.0001f            
+        info.batteryLevel -= Math.abs(info.leftPower) * 0.0001f
+        info.batteryLevel -= Math.abs(info.rightPower) * 0.0001f            
         robot.applyForce(leftPower,leftMotorPos)
         robot.applyForce(rightPower,rigthMotorPos)
       }
