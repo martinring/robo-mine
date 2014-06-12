@@ -10,6 +10,7 @@ import java.util.Locale
 import org.jbox2d.callbacks.QueryCallback
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.util.Random
 
 private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
   var charging = false
@@ -32,20 +33,29 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
     import collection.mutable.{Map,Set}
     
     val name = names.nextName()
+        
+    val reliability = Random.nextInt(50000)
+    var screwdriver = if (Random.nextBoolean) Some(0.0) else None
     
     private var sensors = Map[String, (Double,Body => String)](
       "gps" -> ( 6.0,  b =>  "%2.4fN %2.4fW".formatLocal(Locale.US, b.getPosition().y, -b.getPosition().x)),
       "batteryLevel" -> ( 0.1, _ => "%.1f%%".formatLocal(Locale.US, batteryLevel * 100) ),
       "compass" -> ( 2.0, b => "%.1f°".formatLocal(Locale.US, b.getAngle() * 57.295) ),
-      "gyroscope" -> ( 0.5, { b =>        
+      "gyroscope" -> ( 0.5, { b =>
         "%.4f".formatLocal(Locale.US, b.getAngularVelocity())
-      }),      
+      }),
       "accelerometer" -> ( 0.5, b => {
         val acc = b.getLinearVelocity().sub(_prevAcc).rotate(-b.getAngle())
         "%.4f %.4f".formatLocal(Locale.US, acc.x, acc.y)           
       }),
-      "laser" -> ( 1.0, b => "%.4f %.4f %.4f".formatLocal(Locale.US, _laserL, _laserC, _laserR) ),
-      "goldDetector" -> ( 2.0, _ => "%.4f".formatLocal(Locale.US, _gold) )
+      "laser" -> (( 1.0, _ => {
+        val raw = "%.4f %.4f %.4f".formatLocal(Locale.US, _laserL, _laserC, _laserR)
+        screwdriver.filter(_ > 0).fold(raw){ p => if (p > Random.nextDouble) Random.shuffle((raw + "XX").toList).mkString else raw }        
+      })),
+      "goldDetector" -> ((2.0, _ => {
+        val raw = "%.4f".formatLocal(Locale.US, _gold)
+        screwdriver.map(_ * -1).filter(_ > 0).fold(raw){ p => if (p > Random.nextDouble) Random.shuffle((raw ++ "XX").toList).mkString else raw }
+      }))
     )
     
     def cut(f: Float, negative: Boolean = false) = 
@@ -89,6 +99,10 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
 	  }
 	  
 	  def step(body: Body) = {
+	    if (Random.nextInt(100) == 1)
+	      screwdriver = screwdriver.map( _ + Random.nextGaussian * 0.001 )
+	    if (Random.nextInt(reliability) == 1)
+	      screwdriver = screwdriver.map( x => x * 2 )
 	    listeners.foreach { case (name,listeners) =>
 	      if (batteryLevel > 0 && listeners.size > 0) {	        
 		      sensors.get(name) match {
