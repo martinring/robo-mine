@@ -2,7 +2,7 @@ import SonatypeKeys._
 
 name := "robo-mine"
 
-version := "1.1-SNAPSHOT"
+version := "1.3-SNAPSHOT"
 
 organization := "net.flatmap"
 
