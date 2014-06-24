@@ -10,6 +10,9 @@ import org.jbox2d.common.Vec2
 import org.jbox2d.common.Color3f
 import scala.util.Random
 import org.jbox2d.collision.AABB
+import org.jbox2d.collision.shapes.MassData
+import org.jbox2d.callbacks.QueryCallback
+import org.jbox2d.dynamics.Fixture
 
 private [robomine] trait SimulationStep extends TestbedTest with SimulationInit {
   override def step(settings: TestbedSettings) {
@@ -32,7 +35,7 @@ private [robomine] trait SimulationStep extends TestbedTest with SimulationInit 
       info.controls.step(robot)
             
       info._gold = 0f
-      getWorld().queryAABB(info.goldCallback(robot.getPosition()), new AABB(robot.getPosition().sub(new Vec2(5,5)), robot.getPosition().add(new Vec2(5,5))))
+      getWorld().queryAABB(info.goldCallback(robot, robot.getPosition(), robot.getAngle()), new AABB(robot.getPosition().sub(new Vec2(5,5)), robot.getPosition().add(new Vec2(5,5))))
       
       model.getDebugDraw().drawPoint(robot.getWorldPoint(new Vec2(1f,0)), 2f, new Color3f(0,1,0))
       model.getDebugDraw().drawSolidCircle(robot.getPosition(), Math.sqrt(info.batteryLevel), new Vec2(), new Color3f(0,1,0))
@@ -42,7 +45,22 @@ private [robomine] trait SimulationStep extends TestbedTest with SimulationInit 
       val rigthMotorPos = robot.getWorldPoint(new Vec2(0,-0.8f))
       val leftPower = robot.getWorldVector(new Vec2(200f * info.leftPower,0))
       val rightPower = robot.getWorldVector(new Vec2(200f * info.rightPower,0))
-                         
+            
+      if (info.doLoad) {
+        info.batteryLevel -= 0.25
+	      info.doLoad = false
+	    }
+      
+	    if (info.doUnload) {
+	      info.batteryLevel -= 0.05
+	      info.ropes.foreach { rope =>
+		      rope.getBodyA().getWorld().destroyJoint(rope)
+		    }
+		    info.ropes.clear()
+		    info.load = 0
+	      info.doUnload = false
+	    }	    
+      
       if (info.batteryLevel > 0f) {
         info.laserPointC = None
         info.laserPointL = None

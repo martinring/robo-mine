@@ -34,6 +34,18 @@ trait RobotControls {
    * Set the power level of an output to a value between 0 and 1.
    */
   def setPowerLevel(outputId: String, level: Double)
+  
+  /**
+   * Loads all Gold nuggets that are directly in front of the robot
+   * loading consumes 25% of the battery.
+   */
+  def loadGold()
+  
+  /**
+   * Drops the loaded gold directly in front of the robot. 
+   * Consumes 5% of the battery.
+   */
+  def unloadGold()
 }
 
 private [robomine] trait RobotControlsInternal {

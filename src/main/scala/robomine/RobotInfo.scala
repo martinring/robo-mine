@@ -11,31 +11,40 @@ import org.jbox2d.callbacks.QueryCallback
 import scala.concurrent.Future
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.util.Random
+import org.jbox2d.dynamics.joints.JointDef
+import org.jbox2d.dynamics.joints.JointType
+import org.jbox2d.dynamics.joints.RopeJointDef
+import org.jbox2d.dynamics.joints.Joint
+import scala.collection.mutable.Buffer
 
 private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
-  var charging = false
-  var batteryLevel = 1.0f
-  var leftPower = 0.0f
-  var rightPower = 0.0f
-  var laserPowerL = 0.0f
-  var laserPowerC = 0.0f
-  var laserPowerR = 0.0f
-  var laserPointL = Option.empty[Vec2]
-  var laserPointC = Option.empty[Vec2]
-  var laserPointR = Option.empty[Vec2]
-  var _prevAcc = new Vec2(0,0)
-  var _laserL = 0f
-  var _laserC = 0f
-  var _laserR = 0f
-  var _gold = 0f
+  @volatile var charging = false
+  @volatile var batteryLevel = 1.0f
+  @volatile var leftPower = 0.0f
+  @volatile var rightPower = 0.0f
+  @volatile var laserPowerL = 0.0f
+  @volatile var laserPowerC = 0.0f
+  @volatile var laserPowerR = 0.0f
+  @volatile var laserPointL = Option.empty[Vec2]
+  @volatile var laserPointC = Option.empty[Vec2]
+  @volatile var laserPointR = Option.empty[Vec2]
+  @volatile var load = 0f
+  @volatile var _prevAcc = new Vec2(0,0)  
+  @volatile var _laserL = 0f
+  @volatile var _laserC = 0f
+  @volatile var _laserR = 0f
+  @volatile var _gold = 0f      
+  @volatile var doLoad = false
+  @volatile var doUnload = false
+  @volatile var ropes = Buffer.empty[Joint]
   
   val controls = new RobotControls with RobotControlsInternal {
     import collection.mutable.{Map,Set}
     
     val name = names.nextName()
         
-    val reliability = Random.nextInt(50000)
-    var screwdriver = if (Random.nextBoolean) Some(0.0) else None
+    val reliability = Random.nextInt(75000)
+    var screwdriver = if (Random.nextBoolean) Some(0.0) else None    
     
     private var sensors = Map[String, (Double,Body => String)](
       "gps" -> ( 6.0,  b =>  "%2.4fN %2.4fW".formatLocal(Locale.US, b.getPosition().y, -b.getPosition().x)),
@@ -52,6 +61,7 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
         val raw = "%.4f %.4f %.4f".formatLocal(Locale.US, _laserL, _laserC, _laserR)
         screwdriver.filter(_ > 0).fold(raw){ p => if (p > Random.nextDouble) Random.shuffle((raw + "XX").toList).mkString else raw }        
       })),
+      "load" -> (( 0.1, _ => "%.4f".formatLocal(Locale.US,load))),
       "goldDetector" -> ((2.0, _ => {
         val raw = "%.4f".formatLocal(Locale.US, _gold)
         screwdriver.map(_ * -1).filter(_ > 0).fold(raw){ p => if (p > Random.nextDouble) Random.shuffle((raw ++ "XX").toList).mkString else raw }
@@ -98,21 +108,34 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
 	    }
 	  }
 	  
+	  
+	  def loadGold() {
+	    assert(!doUnload, "can't load and unload at the same time!")
+	    assert(batteryLevel >= 0.25, "not enough battery")	    
+	    doLoad = true
+	  }
+	  
+	  def unloadGold() {
+	    assert(!doLoad, "can't load and unload at the same time!")
+	    assert(batteryLevel >= 0.05, "not enough battery")	    
+	    doUnload = true
+	  }
+	  
 	  def step(body: Body) = {
 	    if (Random.nextInt(100) == 1)
 	      screwdriver = screwdriver.map( _ + Random.nextGaussian * 0.001 )
 	    if (Random.nextInt(reliability) == 1)
-	      screwdriver = screwdriver.map( x => x * 2 )
+	      screwdriver = screwdriver.map( x => x * 10 )
 	    listeners.foreach { case (name,listeners) =>
 	      if (batteryLevel > 0 && listeners.size > 0) {	        
 		      sensors.get(name) match {
 		        case None =>
-		          listeners.foreach { listener => Future { listener("0.0") } }
-		          batteryLevel -= 0.00005f
+		          listeners.foreach { listener => Future ( listener("0.0") ) }
+		          batteryLevel -= 0.00003f
 		        case Some((cost,sensor)) =>
 		          val output = sensor(body)
-		          listeners.foreach { listener => Future { listener(output) } }
-		          batteryLevel -= 0.00005f * cost
+		          listeners.foreach { listener => Future ( listener(output) ) }
+		          batteryLevel -= 0.00003f * cost
 		      }
 	      }
 	    }
@@ -120,12 +143,23 @@ private [robomine] class RobotInfo(base: Body)(implicit names: NameGenerator) {
 	  }
   }
   
-  def goldCallback(pos: Vec2) = new QueryCallback() {
+  def goldCallback(robot: Body, pos: Vec2, orientation: Float) = new QueryCallback() {
     def reportFixture(fixture: Fixture): Boolean = {
       fixture.getBody().getUserData() match {
         case g: GoldInfo =>
-          val factor = Math.max(5 - fixture.getBody().getPosition().sub(pos).length(),0) / 5
+          val relative = fixture.getBody().getPosition().sub(pos).rotate(-orientation)          
+          val factor = Math.max(5 - relative.length(),0) / 5          
           _gold += g.amount * factor
+          if (doLoad && relative.y > -1.5 && relative.y < 1.5 && relative.x > -1 && relative.x < 3.5) {
+            val joint = new RopeJointDef
+            joint.bodyA = robot
+            joint.localAnchorA.set(-1,0)
+            joint.bodyB = fixture.getBody()
+            joint.maxLength = 4
+            joint.`type` = JointType.ROPE
+            ropes += robot.getWorld().createJoint(joint)
+            load += fixture.getBody().getMass()
+          }
         case _ =>
       }
       true
