@@ -2,7 +2,7 @@ package robomine
 
 import org.jbox2d.common.Vec2
 
-object Util {
+private [robomine] object Util {
   implicit def loosePrecision(double: Double) = double.toFloat      
   implicit def vec2FromTuple1(tup: (Double,Double)) = new Vec2(tup._1.toFloat, tup._2.toFloat)
   implicit def vec2FromTuple2(tup: (Int,Int)) = new Vec2(tup._1.toFloat, tup._2.toFloat)
